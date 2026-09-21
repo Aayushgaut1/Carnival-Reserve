@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Carnival Reserve — Neo-Brutalist Currency Tracker</title>
-  
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
+
   <!-- React & Babel CDN -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
@@ -16,7 +17,8 @@
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap"
+    rel="stylesheet">
 
   <script>
     tailwind.config = {
@@ -34,24 +36,28 @@
     body {
       font-family: 'Plus Jakarta Sans', sans-serif;
       background-color: #FAF7F2;
-      background-image: 
+      background-image:
         linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
       background-size: 20px 20px;
     }
+
     ::selection {
       background: #FFE600;
       color: #000;
     }
+
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
+
     .no-scrollbar {
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
   </style>
 </head>
+
 <body>
   <div id="root"></div>
 
@@ -202,9 +208,8 @@
                   {[...Array(6)].map((_, i) => (
                     <span
                       key={i}
-                      className={`w-2.5 h-2.5 rounded-full border border-black ${
-                        i < totalStampsCount ? 'bg-[#FF007A]' : 'bg-white'
-                      }`}
+                      className={`w-2.5 h-2.5 rounded-full border border-black ${i < totalStampsCount ? 'bg-[#FF007A]' : 'bg-white'
+                        }`}
                     />
                   ))}
                 </div>
@@ -237,13 +242,12 @@
                     return (
                       <div
                         key={domain.name}
-                        className={`border-3 border-black rounded-xl p-3 flex flex-col justify-between ${
-                          stamp
-                            ? stamp.winner
-                              ? 'bg-[#FFE600] shadow-[3px_3px_0_0_#000]'
-                              : 'bg-[#00E5FF] shadow-[3px_3px_0_0_#000]'
-                            : 'bg-white'
-                        }`}
+                        className={`border-3 border-black rounded-xl p-3 flex flex-col justify-between ${stamp
+                          ? stamp.winner
+                            ? 'bg-[#FFE600] shadow-[3px_3px_0_0_#000]'
+                            : 'bg-[#00E5FF] shadow-[3px_3px_0_0_#000]'
+                          : 'bg-white'
+                          }`}
                       >
                         <div className="flex items-start justify-between">
                           <span className="text-xl">{domain.icon}</span>
@@ -298,7 +302,7 @@
                       <rect x="5" y="5" width="25" height="25" fill="black" />
                       <rect x="10" y="10" width="15" height="15" fill="white" />
                       <rect x="13" y="13" width="9" height="9" fill="black" />
-                      
+
                       <rect x="70" y="5" width="25" height="25" fill="black" />
                       <rect x="75" y="10" width="15" height="15" fill="white" />
                       <rect x="78" y="13" width="9" height="9" fill="black" />
@@ -392,9 +396,8 @@
                   ].map((entry) => (
                     <div
                       key={entry.rank}
-                      className={`border-3 border-black rounded-xl p-3 flex items-center justify-between ${
-                        entry.isSelf ? 'bg-[#FFE600] font-black shadow-[4px_4px_0_0_#000]' : 'bg-white shadow-[2px_2px_0_0_#000]'
-                      }`}
+                      className={`border-3 border-black rounded-xl p-3 flex items-center justify-between ${entry.isSelf ? 'bg-[#FFE600] font-black shadow-[4px_4px_0_0_#000]' : 'bg-white shadow-[2px_2px_0_0_#000]'
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-black text-white font-black text-xs flex items-center justify-center border-2 border-black">
@@ -440,11 +443,10 @@
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-black transition-all ${
-                      isActive
-                        ? `${tab.color} shadow-[2px_2px_0_0_#000] -translate-y-1 font-black text-black`
-                        : 'bg-white text-black hover:bg-slate-50 font-bold shadow-[1px_1px_0_0_#000]'
-                    }`}
+                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border-2 border-black transition-all ${isActive
+                      ? `${tab.color} shadow-[2px_2px_0_0_#000] -translate-y-1 font-black text-black`
+                      : 'bg-white text-black hover:bg-slate-50 font-bold shadow-[1px_1px_0_0_#000]'
+                      }`}
                   >
                     <span className="text-xl leading-none mb-1">{tab.icon}</span>
                     <span className="text-[10px] uppercase font-black tracking-tight leading-none whitespace-nowrap">
@@ -462,4 +464,5 @@
     ReactDOM.render(<App />, document.getElementById('root'));
   </script>
 </body>
+
 </html>

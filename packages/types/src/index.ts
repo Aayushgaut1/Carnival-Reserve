@@ -2,7 +2,7 @@
 
 export enum Role {
   PARTICIPANT = 'PARTICIPANT',
-  TREASURY_MANAGER = 'TREASURY_MANAGER',
+  DOMAIN_MANAGER = 'DOMAIN_MANAGER',
   MAGEFFICIE_MANAGER = 'MAGEFFICIE_MANAGER',
   SUPER_ADMIN = 'SUPER_ADMIN',
 }
@@ -12,9 +12,18 @@ export enum TransactionType {
   PARTICIPATION_CREDIT = 'PARTICIPATION_CREDIT',
   WINNER_CREDIT = 'WINNER_CREDIT',
   MAGEFFICIE_PURCHASE = 'MAGEFFICIE_PURCHASE',
+  REVERSAL = 'REVERSAL',
   AUCTION_HOLD = 'AUCTION_HOLD',
   AUCTION_SETTLE = 'AUCTION_SETTLE',
   AUCTION_REFUND = 'AUCTION_REFUND',
+}
+
+export interface DomainTreasuryDTO {
+  id: string;
+  domainName: string;
+  accountRef: string; // e.g. "ACC-01"
+  active: boolean;
+  managerId?: string | null;
 }
 
 export interface UniversalTransactionDTO {
@@ -22,11 +31,45 @@ export interface UniversalTransactionDTO {
   participantId: string;
   managerId: string;
   deviceFingerprint: string;
-  amount?: number; // Optional if determined by domain rules
+  amount?: number;
   domainName?: string;
   isWinner?: boolean;
   itemId?: string;
+  quantity?: number;
   proofPhotoUrl?: string;
+}
+
+export interface ReversalRequestDTO {
+  transactionId: string;
+  managerId: string;
+  reason: string;
+}
+
+export interface MagefficieRedemptionDTO {
+  id: string;
+  participantId: string;
+  managerId: string;
+  rewardId: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  stockBefore: number;
+  stockAfter: number;
+  proofRef?: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface AdminReviewFlagDTO {
+  id: string;
+  transactionId?: string | null;
+  participantId: string;
+  managerId: string;
+  reason: string;
+  currentBalance: number;
+  attemptedAmount: number;
+  status: 'PENDING' | 'RESOLVED';
+  createdAt: string;
 }
 
 export interface WalletBalanceResponse {
@@ -46,32 +89,7 @@ export interface PassportStatusResponse {
   }[];
 }
 
-export interface InventoryReconciliationReport {
-  itemId: string;
-  name: string;
-  tier: number;
-  openingCount: number;
-  soldCount: number;
-  availableCount: number;
-  reservedCount: number;
-  expectedAvailable: number;
-  isReconciled: boolean;
-  discrepancy: number;
-}
-
-export interface EconomySeedingSummary {
-  confirmedParticipants: number;
-  registrationPoolTotal: number;
-  participationPoolPerDomain: number;
-  winnerPoolPerDomain: number;
-  domainsSeeded: number;
-  timestamp: string;
-}
-
 export interface LeaderboardEntry {
   rank: number;
-  participantName: string;
-  regNo: string; // Partially masked for privacy, e.g. 21BCE***
-  isCurrentUser: boolean;
-  balance?: number; // Only exposed if isCurrentUser is true
+  name: string;
 }

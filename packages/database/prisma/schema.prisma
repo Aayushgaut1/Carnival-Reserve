@@ -11,8 +11,8 @@ datasource db {
 
 enum Role {
   PARTICIPANT
-  TREASURY_MANAGER // 17 managers (Domain Managers)
-  MAGEFFICIE_MANAGER // Marketplace / Spend booth manager
+  DOMAIN_MANAGER // 17 Domain Managers (ACC-01 to ACC-17)
+  MAGEFFICIE_MANAGER // Marketplace / Spend booth manager (ACC-18)
   SUPER_ADMIN // 2 Super Admins
 }
 
@@ -21,6 +21,7 @@ enum TransactionType {
   PARTICIPATION_CREDIT
   WINNER_CREDIT
   MAGEFFICIE_PURCHASE
+  REVERSAL
   AUCTION_HOLD
   AUCTION_SETTLE
   AUCTION_REFUND
@@ -47,6 +48,8 @@ model User {
   devices          Device[]
   managedTreasury  DomainTreasury?
   transactionsMade Transaction[] @relation("ManagerTransactions")
+  redemptionsMade  MagefficieRedemption[] @relation("MagefficieManagerRedemptions")
+  adminReviewFlags AdminReviewFlag[] @relation("AdminReviewFlags")
 
   @@index([role])
 }
@@ -62,6 +65,8 @@ model Participant {
   wallet           Wallet?
   passport         Passport?
   transactions     Transaction[] @relation("ParticipantTransactions")
+  redemptions      MagefficieRedemption[]
+  adminReviewFlags AdminReviewFlag[]
   auctionBids      AuctionBid[]
 
   createdAt        DateTime     @default(now())
@@ -73,7 +78,7 @@ model Wallet {
   participantId    String       @unique
   participant      Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
   
-  balance          Int          @default(0) // Balance in Crn
+  balance          Int          @default(0) // Derived/tracked balance in Crn
   totalEarned      Int          @default(0)
   totalSpent       Int          @default(0)
   
@@ -84,17 +89,15 @@ model Wallet {
 }
 
 model DomainTreasury {
-  id                     String   @id @default(uuid())
-  domainName             String   @unique // 17 festival domains (e.g., Coding, Gaming, Robotics, Music...)
-  managerId              String?  @unique
-  manager                User?    @relation(fields: [managerId], references: [id])
+  id          String   @id @default(uuid())
+  domainName  String   @unique // 17 festival domains (e.g., Coding & Algo, General Quiz...)
+  accountRef  String   @unique // Fixed identifier (e.g., "ACC-01" to "ACC-17")
+  active      Boolean  @default(true)
+  managerId   String?  @unique
+  manager     User?    @relation(fields: [managerId], references: [id])
   
-  balance                Int      @default(0) // Allocated budget for domain
-  participationRemaining Int      @default(0) // Server-enforced participation counter (Ceiling N * 50)
-  winnerSlotsRemaining   Int      @default(16) // Max 16 winners per domain
-  
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Passport {
@@ -120,27 +123,81 @@ model PassportStamp {
 }
 
 model Transaction {
-  id             String          @id @default(uuid())
-  idempotencyKey String          @unique // Client-generated UUID for deduplication
-  amount         Int
-  type           TransactionType
+  id                       String          @id @default(uuid())
+  idempotencyKey           String          @unique // Client-generated UUID for deduplication
+  amount                   Int
+  type                     TransactionType
   
-  fromAccountId  String?         // Could be Participant Wallet, DomainTreasury, or System Pool
-  toAccountId    String?         // Could be Participant Wallet, DomainTreasury, or Magefficie Treasury
+  fromAccountId            String?         // Participant Wallet, DomainTreasury accountRef, or System
+  toAccountId              String?         // Participant Wallet, DomainTreasury accountRef, or Magefficie
   
-  participantId  String?
-  participant    Participant?    @relation("ParticipantTransactions", fields: [participantId], references: [id])
+  participantId            String?
+  participant              Participant?    @relation("ParticipantTransactions", fields: [participantId], references: [id])
   
-  managerId      String?
-  manager        User?           @relation("ManagerTransactions", fields: [managerId], references: [id])
+  managerId                String?
+  manager                  User?           @relation("ManagerTransactions", fields: [managerId], references: [id])
   
-  proofPhotoUrl  String?         // Mandatory for WINNER_CREDIT and MAGEFFICIE_PURCHASE
-  timestamp      DateTime        @default(now())
+  proofPhotoUrl            String?         // Mandatory for WINNER_CREDIT and MAGEFFICIE_PURCHASE
+  
+  // Reversal Fields
+  reversalOfId             String?         @unique // Self-reference unique FK
+  reversalOf               Transaction?    @relation("TransactionReversal", fields: [reversalOfId], references: [id])
+  reversedBy               Transaction?    @relation("TransactionReversal")
+  reversalWindowExpiresAt  DateTime?
+  reason                   String?
+  
+  timestamp                DateTime        @default(now())
+  adminReviewFlags         AdminReviewFlag[]
   
   @@index([idempotencyKey])
   @@index([participantId])
   @@index([managerId])
   @@index([type])
+}
+
+model MagefficieRedemption {
+  id            String      @id @default(uuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  
+  managerId     String
+  manager       User        @relation("MagefficieManagerRedemptions", fields: [managerId], references: [id])
+  
+  rewardId      String
+  quantity      Int         @default(1)
+  unitCost      Int
+  totalCost     Int
+  stockBefore   Int
+  stockAfter    Int
+  proofRef      String?
+  status        String      @default("COMPLETED")
+  
+  createdAt     DateTime    @default(now())
+
+  @@index([participantId])
+  @@index([managerId])
+}
+
+model AdminReviewFlag {
+  id              String       @id @default(uuid())
+  transactionId   String?
+  transaction     Transaction? @relation(fields: [transactionId], references: [id])
+  
+  participantId   String
+  participant     Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  
+  managerId       String
+  manager         User         @relation("AdminReviewFlags", fields: [managerId], references: [id])
+  
+  reason          String
+  currentBalance  Int
+  attemptedAmount Int
+  status          String       @default("PENDING")
+  
+  createdAt       DateTime     @default(now())
+
+  @@index([status])
+  @@index([participantId])
 }
 
 model InventoryItem {
@@ -169,7 +226,7 @@ model Device {
   deviceName        String
   deviceFingerprint String   @unique
   location          String?
-  approved          Boolean  @default(false) // Max 2 approved devices per manager account
+  approved          Boolean  @default(false) // Soft tracking for secondary audit
   lastLogin         DateTime @default(now())
   ipAddress         String?
 
