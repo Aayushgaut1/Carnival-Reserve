@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/server.js"
+    },
+    {
+      "source": "/((?!assets/|favicon\\.ico|.*\\..*).*)",
+      "destination": "/server.js"
+    }
+  ]
+}

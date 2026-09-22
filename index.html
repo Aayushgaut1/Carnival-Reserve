@@ -1586,6 +1586,16 @@
                                 alt={domain.displayName} 
                                 className="w-full h-full object-contain filter drop-shadow-sm transition-transform duration-300 group-hover:scale-105"
                                 style={{ objectFit: 'contain' }}
+                                onError={(e) => {
+                                  const t = e.currentTarget;
+                                  if (!t.dataset.retried) {
+                                    t.dataset.retried = '1';
+                                    t.src = domain.logo.startsWith('/') ? domain.logo.slice(1) : '/' + domain.logo;
+                                  } else if (t.dataset.retried === '1' && domain.logo.endsWith('.jpeg')) {
+                                    t.dataset.retried = '2';
+                                    t.src = domain.logo.replace('.jpeg', '.png');
+                                  }
+                                }}
                               />
                             </div>
 
@@ -1754,6 +1764,16 @@
                                 alt={domain.displayName} 
                                 className="w-full h-full object-contain filter drop-shadow-sm transition-transform duration-300 group-hover:scale-105"
                                 style={{ objectFit: 'contain' }}
+                                onError={(e) => {
+                                  const t = e.currentTarget;
+                                  if (!t.dataset.retried) {
+                                    t.dataset.retried = '1';
+                                    t.src = domain.logo.startsWith('/') ? domain.logo.slice(1) : '/' + domain.logo;
+                                  } else if (t.dataset.retried === '1' && domain.logo.endsWith('.jpeg')) {
+                                    t.dataset.retried = '2';
+                                    t.src = domain.logo.replace('.jpeg', '.png');
+                                  }
+                                }}
                               />
                             </div>
 

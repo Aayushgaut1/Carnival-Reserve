@@ -9,7 +9,7 @@
     "prisma:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
     "prisma:push": "prisma db push --schema=packages/database/prisma/schema.prisma",
     "test:load": "locust -f load-testing/locustfile.py",
-    "start": "node server/server.js",
+    "start": "node server.js",
     "test": "node tests/carnival-reserve.test.js",
     "clean:data": "node scripts/clean-test-data.js"
   },
