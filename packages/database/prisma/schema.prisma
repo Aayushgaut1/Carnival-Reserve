@@ -12,16 +12,19 @@ datasource db {
 enum Role {
   PARTICIPANT
   DOMAIN_MANAGER // 17 Domain Managers (ACC-01 to ACC-17)
+  DOMAIN_INCHARGE // Central Domain Incharge overseeing all 17 domains
   MAGEFFICIE_MANAGER // Marketplace / Spend booth manager (ACC-18)
-  SUPER_ADMIN // 2 Super Admins
+  SUPER_ADMIN // Super Admins with final oversight
 }
 
 enum TransactionType {
+  REGISTRATION_BONUS
   REGISTRATION_SEED
   PARTICIPATION_CREDIT
   WINNER_CREDIT
   MAGEFFICIE_PURCHASE
   REVERSAL
+  ADMIN_CORRECTION
   AUCTION_HOLD
   AUCTION_SETTLE
   AUCTION_REFUND
@@ -38,9 +41,10 @@ enum AuctionBidStatus {
 model User {
   id               String       @id @default(uuid())
   email            String       @unique
-  passwordHash     String
+  passwordHash     String?
   name             String
   role             Role         @default(PARTICIPANT)
+  assignedDomain   String?      // Exactly 1 domain for DOMAIN_MANAGER
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -56,11 +60,17 @@ model User {
 
 model Participant {
   id               String       @id @default(uuid())
-  userId           String       @unique
-  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participantId    String       @unique // Permanent format: CR-XXXXXXXX
+  name             String
+  email            String       @unique
+  phone            String       @unique
+  college          String
   regNo            String       @unique
-  phone            String
-  qrCode           String       @unique // Contains participant_id ONLY
+  qrCode           String       @unique // Unique signed opaque participant identity token
+  status           String       @default("PENDING") // PENDING -> ACTIVE upon OTP verification
+
+  userId           String?      @unique
+  user             User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   wallet           Wallet?
   passport         Passport?
@@ -68,9 +78,33 @@ model Participant {
   redemptions      MagefficieRedemption[]
   adminReviewFlags AdminReviewFlag[]
   auctionBids      AuctionBid[]
+  otpRecords       OtpRecord[]
 
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
+
+  @@index([participantId])
+  @@index([email])
+  @@index([phone])
+  @@index([regNo])
+}
+
+model OtpRecord {
+  id                  String       @id @default(uuid())
+  identifier          String       // Normalized email or phone
+  otpHash             String       // Cryptographic hash (never plaintext)
+  attempts            Int          @default(0) // Max 5 verification attempts
+  expiresAt           DateTime     // 5-minute lifespan
+  resendCooldownUntil DateTime?    // 30-60 second cooldown
+  verified            Boolean      @default(false)
+
+  participantId       String?
+  participant         Participant? @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  createdAt           DateTime     @default(now())
+
+  @@index([identifier])
+  @@index([participantId])
 }
 
 model Wallet {
@@ -90,7 +124,7 @@ model Wallet {
 
 model DomainTreasury {
   id          String   @id @default(uuid())
-  domainName  String   @unique // 17 festival domains (e.g., Coding & Algo, General Quiz...)
+  domainName  String   @unique // 17 festival domains
   accountRef  String   @unique // Fixed identifier (e.g., "ACC-01" to "ACC-17")
   active      Boolean  @default(true)
   managerId   String?  @unique
@@ -98,6 +132,21 @@ model DomainTreasury {
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model DomainRewardBudget {
+  id              String   @id @default(uuid())
+  domainId        String   @unique
+  domainName      String   @unique
+  managerId       String   @unique
+  allocatedAmount Int      @default(4000) // Exactly 4,000 Crn budget per domain
+  issuedAmount    Int      @default(0)
+  remainingAmount Int      @default(4000)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([domainId])
+  @@index([managerId])
 }
 
 model Passport {
@@ -146,6 +195,13 @@ model Transaction {
   reversalWindowExpiresAt  DateTime?
   reason                   String?
   
+  // Audit Snapshots
+  participantBalanceBefore Int?
+  participantBalanceAfter  Int?
+  domainBudgetBefore       Int?
+  domainBudgetAfter        Int?
+  status                   String          @default("SUCCESS")
+
   timestamp                DateTime        @default(now())
   adminReviewFlags         AdminReviewFlag[]
   
@@ -250,4 +306,24 @@ model AuctionBid {
 
   @@index([itemId])
   @@index([participantId])
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  actorId       String   // User or admin ID performing the action
+  actorRole     String   // SUPER_ADMIN, DOMAIN_INCHARGE, DOMAIN_MANAGER
+  domainId      String?  // Associated domain ID or name
+  participantId String?  // Target participant ID
+  transactionId String?  // Associated transaction ID
+  amount        Int?     // Crown amount involved
+  action        String   // REWARD_CREDITED, MANAGER_ASSIGNED, INCHARGE_ASSIGNED, BALANCE_CORRECTED, BUDGET_ADJUSTED
+  reason        String?  // Mandatory reason for administrative actions
+  beforeVal     String?  // JSON or string snapshot before change
+  afterVal      String?  // JSON or string snapshot after change
+  timestamp     DateTime @default(now())
+
+  @@index([actorId])
+  @@index([domainId])
+  @@index([transactionId])
+  @@index([action])
 }

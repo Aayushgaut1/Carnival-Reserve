@@ -1,6 +1,33 @@
 // Shared Utilities for Carnival Reserve
 
-import { InventoryReconciliationReport } from '@carnival/types';
+export * from './domains';
+import { InventoryReconciliationReport, ReconciliationReportDTO } from '@carnival/types';
+
+/**
+ * Super Admin Currency Reconciliation Calculator
+ * Formula: Expected Outstanding = Issued - Reversed - Redeemed
+ * Discrepancy = Actual Outstanding - Expected Outstanding
+ */
+export function calculateSystemReconciliation(
+  totalIssued: number,
+  totalReversed: number,
+  totalRedeemed: number,
+  actualWalletTotal: number
+): ReconciliationReportDTO {
+  const expectedOutstanding = totalIssued - totalReversed - totalRedeemed;
+  const discrepancy = actualWalletTotal - expectedOutstanding;
+  const isReconciled = discrepancy === 0;
+
+  return {
+    issued: totalIssued,
+    reversed: totalReversed,
+    redeemed: totalRedeemed,
+    expectedOutstanding,
+    actualWalletTotal,
+    discrepancy,
+    isReconciled,
+  };
+}
 
 /**
  * Economy Calculation Engine

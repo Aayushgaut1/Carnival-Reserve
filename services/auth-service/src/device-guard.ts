@@ -28,7 +28,7 @@ export async function verifyManagerDevice(
     return { allowed: false, reason: 'Manager account not found' };
   }
 
-  if (manager.role !== 'TREASURY_MANAGER' && manager.role !== 'MAGEFFICIE_MANAGER' && manager.role !== 'SUPER_ADMIN') {
+  if (manager.role !== 'DOMAIN_MANAGER' && manager.role !== 'MAGEFFICIE_MANAGER' && manager.role !== 'SUPER_ADMIN') {
     return { allowed: false, reason: 'Unauthorized role for manager operation' };
   }
 

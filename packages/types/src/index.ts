@@ -18,6 +18,17 @@ export enum TransactionType {
   AUCTION_REFUND = 'AUCTION_REFUND',
 }
 
+export interface DomainConfig {
+  id: string;
+  accountRef: string;
+  displayName: string;
+  category: string;
+  icon: string;
+  accentColor: string;
+  shortDescription: string;
+  tagline: string;
+}
+
 export interface DomainTreasuryDTO {
   id: string;
   domainName: string;
@@ -25,6 +36,7 @@ export interface DomainTreasuryDTO {
   active: boolean;
   managerId?: string | null;
 }
+
 
 export interface UniversalTransactionDTO {
   idempotencyKey: string;
@@ -93,3 +105,27 @@ export interface LeaderboardEntry {
   rank: number;
   name: string;
 }
+
+export interface InventoryReconciliationReport {
+  itemId: string;
+  name: string;
+  tier: number;
+  openingCount: number;
+  soldCount: number;
+  availableCount: number;
+  reservedCount: number;
+  expectedAvailable: number;
+  isReconciled: boolean;
+  discrepancy: number;
+}
+
+export interface ReconciliationReportDTO {
+  issued: number;
+  reversed: number;
+  redeemed: number;
+  expectedOutstanding: number;
+  actualWalletTotal: number;
+  discrepancy: number;
+  isReconciled: boolean;
+}
+

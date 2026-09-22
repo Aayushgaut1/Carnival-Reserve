@@ -38,3 +38,13 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# SQLite temp files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Scratch & temporary test scripts
+scratch_*
+temp_*
+patch*.py

@@ -1,16 +1,14 @@
 // Leaderboard Service
 
-import { maskRegNo } from '@carnival/utils';
 import { LeaderboardEntry } from '@carnival/types';
 
 /**
- * Leaderboard Service
- * Hard Constraint: Leaderboard shows rank and name only, never a raw balance,
- * for any participant other than the viewer's own.
+ * Public Leaderboard Service
+ * Hard Security Requirement: The public leaderboard endpoint returns rank and name ONLY.
+ * It does NOT expose wallet balance, participant ID, phone number, or registration number.
  */
 export async function getLeaderboard(
   prisma: any,
-  viewerParticipantId: string,
   limit: number = 50
 ): Promise<LeaderboardEntry[]> {
   const wallets = await prisma.wallet.findMany({
@@ -25,16 +23,8 @@ export async function getLeaderboard(
     },
   });
 
-  return wallets.map((wallet: any, index: number) => {
-    const isCurrentUser = wallet.participantId === viewerParticipantId;
-
-    return {
-      rank: index + 1,
-      participantName: wallet.participant?.user?.name || 'Anonymous Participant',
-      regNo: maskRegNo(wallet.participant?.regNo || ''),
-      isCurrentUser,
-      // PRIVACY HARD CONSTRAINT: Raw balance is exposed ONLY to the viewer for their own account
-      balance: isCurrentUser ? wallet.balance : undefined,
-    };
-  });
+  return wallets.map((wallet: any, index: number) => ({
+    rank: index + 1,
+    name: wallet.participant?.user?.name || 'Anonymous Participant',
+  }));
 }

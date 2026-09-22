@@ -1,6 +1,10 @@
-// Universal 5-Step Money Action Engine
+// Universal 5-Step Money Action Engine for Carnival Reserve
 
 import { verifyManagerDevice } from '../../auth-service/src/device-guard';
+
+export const REGISTRATION_REWARD = 50;
+export const PARTICIPATION_REWARD = 50;
+export const WINNER_REWARD = 250;
 
 export interface DomainCreditParams {
   idempotencyKey: string;
@@ -18,7 +22,14 @@ export interface MagefficiePurchaseParams {
   deviceFingerprint: string;
   participantId: string;
   itemId: string;
+  quantity?: number;
   proofPhotoUrl: string; // Mandatory for Magefficie purchase
+}
+
+export interface ReversalParams {
+  transactionId: string;
+  managerId: string;
+  reason: string;
 }
 
 export interface AuctionBidParams {
@@ -33,16 +44,16 @@ export class TransactionEngine {
 
   /**
    * UNIVERSAL ACTION PATTERN: Domain Credit Route (Participation & Winner)
-   * 1. Authenticate manager & device (max 2 approved)
-   * 2. Validate domain claim & winner slots server-side on DomainTreasury
-   * 3. Execute atomic Prisma $transaction
-   * 4. Record Transaction row with idempotency key
+   * 1. Authenticate manager & device
+   * 2. Server-side Domain authorization (Manager assigned to Domain or Super Admin)
+   * 3. Validate one-shot domain completion (block second credit or upgrades)
+   * 4. Execute atomic Prisma $transaction (credit wallet + record stamp + record transaction)
    * 5. Real-time Notification
    */
   async processDomainCredit(params: DomainCreditParams) {
     const { idempotencyKey, managerId, deviceFingerprint, participantId, domainName, isWinner, proofPhotoUrl } = params;
 
-    // STEP 1: AUTHENTICATE
+    // STEP 1: AUTHENTICATE DEVICE & MANAGER
     const deviceCheck = await verifyManagerDevice(this.prisma, managerId, deviceFingerprint);
     if (!deviceCheck.allowed) {
       throw new Error(`AUTH_DEVICE_FAILED: ${deviceCheck.reason}`);
@@ -50,6 +61,36 @@ export class TransactionEngine {
 
     if (isWinner && (!proofPhotoUrl || proofPhotoUrl.trim() === '')) {
       throw new Error('VALIDATION_FAILED: Winner credits require a photo proof URL.');
+    }
+
+    // Server-side Domain Manager Authorization
+    const manager = await this.prisma.user.findUnique({
+      where: { id: managerId },
+      include: { managedTreasury: true },
+    });
+
+    if (!manager) {
+      throw new Error('AUTH_FAILED: Manager not found.');
+    }
+
+    if (manager.role !== 'SUPER_ADMIN' && manager.role !== 'DOMAIN_MANAGER') {
+      throw new Error('FORBIDDEN: Unauthorized role for domain operation.');
+    }
+
+    const treasury = await this.prisma.domainTreasury.findUnique({
+      where: { domainName },
+    });
+
+    if (!treasury) {
+      throw new Error(`VALIDATION_FAILED: Domain Treasury '${domainName}' does not exist.`);
+    }
+
+    if (
+      manager.role !== 'SUPER_ADMIN' &&
+      manager.managedTreasury?.id !== treasury.id &&
+      treasury.managerId !== managerId
+    ) {
+      throw new Error('FORBIDDEN: Domain Manager is not authorized for this domain.');
     }
 
     // Check existing Idempotency Key before starting transaction
@@ -60,12 +101,14 @@ export class TransactionEngine {
       return { status: 'DUPLICATE_REJECTED', transaction: existingTx };
     }
 
-    // STEP 2 & 3 & 4: VALIDATE, EXECUTE, AND RECORD ATOMICALLY IN $TRANSACTION
-    const creditAmount = isWinner ? 250 : 50;
+    // Fixed reward calculation (No arbitrary amounts)
+    const creditAmount = isWinner ? WINNER_REWARD : PARTICIPATION_REWARD;
     const txType = isWinner ? 'WINNER_CREDIT' : 'PARTICIPATION_CREDIT';
+    const reversalWindowExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
+    // STEP 2, 3 & 4: VALIDATE ONE-SHOT CREDIT, EXECUTE, AND RECORD ATOMICALLY
     const result = await this.prisma.$transaction(async (tx: any) => {
-      // 1. Fetch Participant & Passport with lock
+      // Fetch Participant & Passport
       const participant = await tx.participant.findUnique({
         where: { id: participantId },
         include: { wallet: true, passport: { include: { stamps: true } } },
@@ -75,45 +118,13 @@ export class TransactionEngine {
         throw new Error('VALIDATION_FAILED: Participant or wallet not found');
       }
 
-      // Check if domain is already claimed by participant
+      // ONE-SHOT DOMAIN CREDIT CHECK: Block if domain has already been completed
       const existingStamp = participant.passport?.stamps.find((s: any) => s.domainName === domainName);
-      if (existingStamp && !isWinner) {
-        throw new Error(`VALIDATION_FAILED: Domain '${domainName}' has already been claimed by this participant.`);
+      if (existingStamp) {
+        throw new Error(`VALIDATION_FAILED: Participant has already completed domain '${domainName}'.`);
       }
 
-      // 2. Fetch Domain Treasury server-side counter record
-      const treasury = await tx.domainTreasury.findUnique({
-        where: { domainName },
-      });
-
-      if (!treasury) {
-        throw new Error(`VALIDATION_FAILED: Domain Treasury '${domainName}' does not exist.`);
-      }
-
-      if (isWinner) {
-        if (treasury.winnerSlotsRemaining <= 0) {
-          throw new Error(`VALIDATION_FAILED: All 16 winner slots for domain '${domainName}' have been exhausted.`);
-        }
-      } else {
-        if (treasury.participationRemaining <= 0) {
-          throw new Error(`VALIDATION_FAILED: Participation pool for domain '${domainName}' has been exhausted.`);
-        }
-      }
-
-      if (treasury.balance < creditAmount) {
-        throw new Error(`VALIDATION_FAILED: Insufficient domain treasury balance in '${domainName}'.`);
-      }
-
-      // 3. ATOMIC UPDATES: Debit Domain Treasury & Credit Participant Wallet
-      const updatedTreasury = await tx.domainTreasury.update({
-        where: { id: treasury.id },
-        data: {
-          balance: { decrement: creditAmount },
-          participationRemaining: isWinner ? treasury.participationRemaining : { decrement: 1 },
-          winnerSlotsRemaining: isWinner ? { decrement: 1 } : treasury.winnerSlotsRemaining,
-        },
-      });
-
+      // Credit Participant Wallet
       const updatedWallet = await tx.wallet.update({
         where: { id: participant.wallet.id },
         data: {
@@ -122,13 +133,8 @@ export class TransactionEngine {
         },
       });
 
-      // 4. Update or create Passport Stamp
-      if (existingStamp) {
-        await tx.passportStamp.update({
-          where: { id: existingStamp.id },
-          data: { isWinner: true },
-        });
-      } else {
+      // Create Passport Stamp
+      if (participant.passport) {
         await tx.passportStamp.create({
           data: {
             passportId: participant.passport.id,
@@ -138,7 +144,7 @@ export class TransactionEngine {
         });
       }
 
-      // 5. Record Transaction Row
+      // Record Transaction Row with 5-minute Reversal Expiry
       const transactionRecord = await tx.transaction.create({
         data: {
           idempotencyKey,
@@ -148,7 +154,8 @@ export class TransactionEngine {
           toAccountId: participant.wallet.id,
           participantId: participant.id,
           managerId,
-          proofPhotoUrl: isWinner ? proofPhotoUrl : null, // Save storage: plain participation needs timestamp only
+          proofPhotoUrl: isWinner ? proofPhotoUrl : null,
+          reversalWindowExpiresAt,
         },
       });
 
@@ -160,7 +167,7 @@ export class TransactionEngine {
       };
     });
 
-    // STEP 5: NOTIFY REAL-TIME CLIENT
+    // STEP 5: REAL-TIME PUSH NOTIFICATION
     if (this.redisPublisher) {
       await this.redisPublisher.publish(
         'WALLET_UPDATE',
@@ -179,10 +186,143 @@ export class TransactionEngine {
   }
 
   /**
+   * ADDITIVE REVERSAL ENGINE (`POST /transactions/:id/reverse`)
+   * - 5-minute manager window (unlimited for Super Admin)
+   * - Enforces single-reversal guard
+   * - Auto-blocks with AdminReviewFlag on insufficient balance
+   * - Resets passport stamp on successful reversal
+   */
+  async reverseTransaction(params: ReversalParams) {
+    const { transactionId, managerId, reason } = params;
+
+    if (!reason || reason.trim() === '') {
+      throw new Error('VALIDATION_FAILED: Reason is required for transaction reversal.');
+    }
+
+    const originalTx = await this.prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        reversedBy: true,
+        participant: { include: { wallet: true, passport: { include: { stamps: true } } } },
+      },
+    });
+
+    if (!originalTx) {
+      throw new Error('VALIDATION_FAILED: Original transaction not found.');
+    }
+
+    if (originalTx.reversedBy || originalTx.reversalOfId) {
+      throw new Error('VALIDATION_FAILED: Transaction has already been reversed.');
+    }
+
+    const manager = await this.prisma.user.findUnique({
+      where: { id: managerId },
+    });
+
+    if (!manager) {
+      throw new Error('AUTH_FAILED: Manager account not found.');
+    }
+
+    // Ownership and 5-minute window check for non-Super Admin
+    if (manager.role !== 'SUPER_ADMIN') {
+      if (originalTx.managerId !== managerId) {
+        throw new Error('FORBIDDEN: Only the original Domain Manager or Super Admin can reverse this transaction.');
+      }
+
+      if (originalTx.reversalWindowExpiresAt && new Date() > new Date(originalTx.reversalWindowExpiresAt)) {
+        throw new Error('VALIDATION_FAILED: Reversal window of 5 minutes has expired.');
+      }
+    }
+
+    const participant = originalTx.participant;
+    if (!participant || !participant.wallet) {
+      throw new Error('VALIDATION_FAILED: Participant wallet not found for reversal.');
+    }
+
+    const reversalAmount = originalTx.amount;
+
+    // Balance Protection Check: Reversal must NOT create a negative balance
+    if (participant.wallet.balance < reversalAmount) {
+      await this.prisma.adminReviewFlag.create({
+        data: {
+          transactionId: originalTx.id,
+          participantId: participant.id,
+          managerId,
+          reason: `INSUFFICIENT_BALANCE: Reversal requested (${reversalAmount} Crn) exceeds available balance (${participant.wallet.balance} Crn). Reason: ${reason}`,
+          currentBalance: participant.wallet.balance,
+          attemptedAmount: reversalAmount,
+          status: 'PENDING',
+        },
+      });
+
+      throw new Error(
+        `INSUFFICIENT_BALANCE_FOR_REVERSAL: Reversal Blocked: Participant has already spent this balance (Current Balance: ${participant.wallet.balance} Crn < Reversal Amount: ${reversalAmount} Crn). An escalation ticket has been automatically logged for Super Admin manual review.`
+      );
+    }
+
+    // Execute Atomic Reversal
+    const result = await this.prisma.$transaction(async (tx: any) => {
+      // 1. Debit Participant Wallet
+      const updatedWallet = await tx.wallet.update({
+        where: { id: participant.wallet.id },
+        data: {
+          balance: { decrement: reversalAmount },
+          totalEarned: { decrement: reversalAmount },
+        },
+      });
+
+      // 2. Insert Reversal Transaction Ledger Row
+      const reversalTxKey = `rev_${originalTx.id}_${Date.now()}`;
+      const reversalRecord = await tx.transaction.create({
+        data: {
+          idempotencyKey: reversalTxKey,
+          amount: -reversalAmount,
+          type: 'REVERSAL',
+          fromAccountId: originalTx.toAccountId,
+          toAccountId: originalTx.fromAccountId,
+          participantId: participant.id,
+          managerId,
+          reversalOfId: originalTx.id,
+          reason: reason.trim(),
+        },
+      });
+
+      // 3. Reset Passport Stamp if this was a domain credit
+      if (originalTx.type === 'PARTICIPATION_CREDIT' || originalTx.type === 'WINNER_CREDIT') {
+        const treasury = await tx.domainTreasury.findUnique({
+          where: { id: originalTx.fromAccountId },
+        });
+
+        if (treasury?.domainName && participant.passport) {
+          await tx.passportStamp.deleteMany({
+            where: {
+              passportId: participant.passport.id,
+              domainName: treasury.domainName,
+            },
+          });
+        }
+      }
+
+      return {
+        reversalTransaction: reversalRecord,
+        newBalance: updatedWallet.balance,
+      };
+    });
+
+    return { status: 'SUCCESS', ...result };
+  }
+
+  /**
    * UNIVERSAL ACTION PATTERN: Magefficie Marketplace Purchase Route
+   * - Supports quantity > 1
+   * - Computes totalCost = unitCost * quantity
+   * - Atomic conditional inventory stock decrement preventing overselling race conditions
+   * - Logs dedicated MagefficieRedemption row
    */
   async processMagefficiePurchase(params: MagefficiePurchaseParams) {
-    const { idempotencyKey, managerId, deviceFingerprint, participantId, itemId, proofPhotoUrl } = params;
+    const { idempotencyKey, managerId, deviceFingerprint, participantId, itemId, quantity, proofPhotoUrl } = params;
+
+    const qty = quantity && quantity > 0 ? quantity : 1;
 
     // STEP 1: AUTHENTICATE
     const deviceCheck = await verifyManagerDevice(this.prisma, managerId, deviceFingerprint);
@@ -202,9 +342,8 @@ export class TransactionEngine {
       return { status: 'DUPLICATE_REJECTED', transaction: existingTx };
     }
 
-    // STEP 2 & 3 & 4: ATOMIC TRANSACTION
+    // STEP 2, 3 & 4: ATOMIC TRANSACTION WITH CONDITIONAL STOCK CHECK
     const result = await this.prisma.$transaction(async (tx: any) => {
-      // Fetch Item
       const item = await tx.inventoryItem.findUnique({
         where: { id: itemId },
       });
@@ -217,11 +356,13 @@ export class TransactionEngine {
         throw new Error('VALIDATION_FAILED: Tier 4 items are reserved for auction only.');
       }
 
-      if (item.availableCount <= 0) {
-        throw new Error(`VALIDATION_FAILED: Item '${item.name}' is out of stock.`);
+      const unitCost = item.price;
+      const totalCost = unitCost * qty;
+
+      if (item.availableCount < qty) {
+        throw new Error(`VALIDATION_FAILED: Requested quantity (${qty}) exceeds available stock (${item.availableCount}).`);
       }
 
-      // Fetch Participant Wallet
       const participant = await tx.participant.findUnique({
         where: { id: participantId },
         include: { wallet: true },
@@ -231,24 +372,48 @@ export class TransactionEngine {
         throw new Error('VALIDATION_FAILED: Participant wallet not found.');
       }
 
-      if (participant.wallet.balance < item.price) {
-        throw new Error(`VALIDATION_FAILED: Insufficient wallet balance (${participant.wallet.balance} Crn) for item price (${item.price} Crn).`);
+      if (participant.wallet.balance < totalCost) {
+        throw new Error(`VALIDATION_FAILED: Insufficient wallet balance (${participant.wallet.balance} Crn) for total cost (${totalCost} Crn).`);
       }
 
-      // Debit Wallet & Update Inventory (Opening - Sold = Available)
-      const updatedWallet = await tx.wallet.update({
-        where: { id: participant.wallet.id },
+      // Atomic Stock Decrement preventing race condition
+      const updatedItemCount = await tx.inventoryItem.updateMany({
+        where: {
+          id: item.id,
+          availableCount: { gte: qty },
+        },
         data: {
-          balance: { decrement: item.price },
-          totalSpent: { increment: item.price },
+          availableCount: { decrement: qty },
+          soldCount: { increment: qty },
         },
       });
 
-      const updatedItem = await tx.inventoryItem.update({
-        where: { id: item.id },
+      if (updatedItemCount.count === 0) {
+        throw new Error('INSUFFICIENT_STOCK: Stock became unavailable during transaction.');
+      }
+
+      // Debit Wallet
+      const updatedWallet = await tx.wallet.update({
+        where: { id: participant.wallet.id },
         data: {
-          availableCount: { decrement: 1 },
-          soldCount: { increment: 1 },
+          balance: { decrement: totalCost },
+          totalSpent: { increment: totalCost },
+        },
+      });
+
+      // Record Magefficie Redemption Log
+      const redemptionRecord = await tx.magefficieRedemption.create({
+        data: {
+          participantId: participant.id,
+          managerId,
+          rewardId: item.id,
+          quantity: qty,
+          unitCost,
+          totalCost,
+          stockBefore: item.availableCount,
+          stockAfter: item.availableCount - qty,
+          proofRef: proofPhotoUrl,
+          status: 'COMPLETED',
         },
       });
 
@@ -256,7 +421,7 @@ export class TransactionEngine {
       const transactionRecord = await tx.transaction.create({
         data: {
           idempotencyKey,
-          amount: item.price,
+          amount: totalCost,
           type: 'MAGEFFICIE_PURCHASE',
           fromAccountId: participant.wallet.id,
           toAccountId: `MAGEFFICIE_ITEM_${item.id}`,
@@ -268,13 +433,16 @@ export class TransactionEngine {
 
       return {
         transaction: transactionRecord,
+        redemption: redemptionRecord,
         newBalance: updatedWallet.balance,
         itemName: item.name,
-        itemTier: item.tier,
+        quantity: qty,
+        unitCost,
+        totalCost,
       };
     });
 
-    // STEP 5: NOTIFY
+    // STEP 5: REAL-TIME PUSH NOTIFICATION
     if (this.redisPublisher) {
       await this.redisPublisher.publish(
         'WALLET_UPDATE',
@@ -283,6 +451,8 @@ export class TransactionEngine {
           balance: result.newBalance,
           type: 'MAGEFFICIE_PURCHASE',
           itemName: result.itemName,
+          quantity: result.quantity,
+          totalCost: result.totalCost,
           timestamp: new Date().toISOString(),
         })
       );
@@ -307,7 +477,6 @@ export class TransactionEngine {
         throw new Error(`VALIDATION_FAILED: Bid amount must be at least starting price of ${item.price} Crn.`);
       }
 
-      // Check current highest bid
       const highestBid = await tx.auctionBid.findFirst({
         where: { itemId, status: 'ACTIVE' },
         orderBy: { bidAmount: 'desc' },
@@ -326,7 +495,6 @@ export class TransactionEngine {
         throw new Error('VALIDATION_FAILED: Insufficient balance for auction hold.');
       }
 
-      // If existing highest bid exists, release hold (refund) for previous bidder
       if (highestBid) {
         await tx.auctionBid.update({
           where: { id: highestBid.id },
@@ -339,7 +507,6 @@ export class TransactionEngine {
         });
       }
 
-      // Place hold on new bidder's wallet
       await tx.wallet.update({
         where: { id: participant.wallet.id },
         data: { balance: { decrement: bidAmount } },

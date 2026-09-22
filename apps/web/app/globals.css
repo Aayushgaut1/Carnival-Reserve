@@ -3,74 +3,65 @@
 @tailwind utilities;
 
 @layer utilities {
-  /* Grid paper pattern inspired by image 1 */
-  .bg-grid-paper {
-    background-color: #FAF7F2;
+  /* Cinematic Festival Dark Atmospheric Background */
+  .bg-festival-dark {
+    background-color: #080706;
     background-image: 
-      linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
-    background-size: 20px 20px;
+      radial-gradient(circle at 50% -20%, rgba(255, 106, 0, 0.15), transparent 70%),
+      radial-gradient(circle at 100% 60%, rgba(255, 210, 31, 0.08), transparent 50%),
+      linear-gradient(to right, rgba(255, 106, 0, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 106, 0, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px;
   }
 
-  /* Neo-Brutalist Hard Shadows */
-  .neo-shadow-sm {
-    box-shadow: 3px 3px 0px 0px #000000;
+  /* Festival Glows & Accents */
+  .glow-orange {
+    box-shadow: 0 0 25px -4px rgba(255, 106, 0, 0.4);
   }
-  .neo-shadow {
-    box-shadow: 5px 5px 0px 0px #000000;
+  .glow-gold {
+    box-shadow: 0 0 25px -4px rgba(255, 210, 31, 0.4);
   }
-  .neo-shadow-lg {
-    box-shadow: 8px 8px 0px 0px #000000;
-  }
-  .neo-shadow-pink {
-    box-shadow: 5px 5px 0px 0px #FF007A;
-  }
-  .neo-shadow-yellow {
-    box-shadow: 5px 5px 0px 0px #FFE600;
+  .glow-subtle {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7);
   }
 
-  /* Stacked paper outline effect inspired by image 1 & image 3 */
-  .neo-stack {
-    position: relative;
+  /* Cinematic Card Borders */
+  .border-bronze {
+    border-color: #6B3A16;
   }
-  .neo-stack::before {
-    content: '';
-    position: absolute;
-    top: 6px;
-    left: 6px;
-    right: -6px;
-    bottom: -6px;
-    background: #000000;
-    z-index: -1;
+  .border-bronze-light {
+    border-color: rgba(255, 106, 0, 0.3);
   }
-  .neo-stack::after {
-    content: '';
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    right: -12px;
-    bottom: -12px;
-    background: #FFE600;
-    border: 3px solid #000000;
-    z-index: -2;
+
+  /* Warm Gradients */
+  .gradient-orange-gold {
+    background: linear-gradient(135deg, #FF6A00 0%, #FFD21F 100%);
+  }
+  .gradient-deep-orange {
+    background: linear-gradient(135deg, #D83A00 0%, #FF6A00 100%);
+  }
+  .gradient-bronze-surface {
+    background: linear-gradient(180deg, #1A130E 0%, #12100D 100%);
   }
 }
 
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #FAF7F2;
-  border-left: 2px solid #000;
+  background: #080706;
 }
 ::-webkit-scrollbar-thumb {
-  background: #FFE600;
-  border: 2px solid #000;
+  background: #6B3A16;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #FF6A00;
 }
 
 ::selection {
-  background: #FFE600;
-  color: #000;
+  background: #FF6A00;
+  color: #F8F5EF;
 }
